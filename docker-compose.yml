@@ -1,0 +1,40 @@
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://192.168.1.XXX:5678}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Paris}
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=5000
+      - NODE_FUNCTION_ALLOW_BUILTIN=tls,net
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - IMAP_HOST=${IMAP_HOST}
+      - IMAP_PORT=${IMAP_PORT:-993}
+      - IMAP_USER=${IMAP_USER}
+      - IMAP_PASSWORD=${IMAP_PASSWORD}
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    depends_on:
+      - ollama-server
+
+  ollama-server:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
+    volumes:
+      - ./ollama_data:/root/.ollama

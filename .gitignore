@@ -1,0 +1,24 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Persistent Docker volumes (n8n state & Ollama models)
+n8n_data/
+ollama_data/
+
+# Logs & temporary files
+*.log
+logs/
+*.tmp
+*.bak
+
+# SSH keys & certificates
+*.key
+*.pem
+id_ed25519*
+id_rsa*
+
+# OS metadata
+.DS_Store
+Thumbs.db

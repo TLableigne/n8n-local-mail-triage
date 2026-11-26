@@ -1,0 +1,28 @@
+#!/bin/sh
+# ==============================================================================
+# safe-wol-shutdown - Conditional shutdown guard running on Arch Linux.
+# Install at: /usr/local/bin/safe-wol-shutdown (chmod 755, owner root:root)
+# Sudoers rule: <user> ALL=(ALL) NOPASSWD: /usr/local/bin/safe-wol-shutdown
+# ==============================================================================
+
+# 1. Abort shutdown if an active Hyprland or Wayland graphical session is running
+if pgrep -x Hyprland >/dev/null 2>&1; then
+    echo "ABORT_HYPRLAND_ACTIVE"
+    exit 0
+fi
+
+for sock in /run/user/*/wayland-*; do
+    if [ -S "$sock" ]; then
+        echo "ABORT_HYPRLAND_ACTIVE"
+        exit 0
+    fi
+done
+
+# 2. Abort shutdown if a manual lock file exists
+if [ -f /tmp/no-auto-shutdown ]; then
+    echo "ABORT_LOCK_FILE"
+    exit 0
+fi
+
+# 3. No active graphical session or lock file: power off cleanly
+exec /usr/bin/systemctl poweroff

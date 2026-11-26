@@ -1,0 +1,624 @@
+{
+  "name": "Local AI Mail Triage (n8n + Ollama + WoL + Discord)",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "postProcessAction": "nothing",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.2,
+      "position": [
+        -16,
+        0
+      ],
+      "id": "bab43521-919a-4a8f-92a4-f23f37619990",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "YOUR_IMAP_CREDENTIAL_ID",
+          "name": "IMAP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tu es un système expert de tri d'e-mails pour une boîte personnelle dédiée au gaming, aux plateformes créateurs et aux comptes techniques. Analyse l'e-mail délimité par les balises <email> et classe-le dans UNE SEULE des catégories suivantes :\n\nDÉFINITIONS DES CATÉGORIES :\n- SPAM : UNIQUEMENT les arnaques évidentes (phishing), tentatives d'extorsion ou démarchage frauduleux d'expéditeurs inconnus. EN CAS DE DOUTE, NE JAMAIS CLASSER EN SPAM.\n- FACTURE : Reçus de paiement, factures d'achat, confirmations de commande payée, prélèvements, quittances, avis d'échéance. (Une pub affichant un prix ou une réduction n'est PAS une facture).\n- PROMO : Toute offre commerciale, réduction, solde, code promo, essai gratuit ou bundle payant (y compris les soldes Steam, bundles Fanatical, abonnements Duolingo, offres Google Pixel, Ubigi, SaaS). Dès qu'un mail cherche à vendre quelque chose ou propose une réduction, c'est PROMO.\n- JEUX : Communications liées aux jeux vidéo SANS offre commerciale : notes de patch, mises à jour de jeu, événements in-game, badges/drops Twitch, disponibilité d'une démo gratuite ou notifications de compte gaming.\n- NEWSLETTER : Bulletins d'information réguliers, résumés hebdomadaires, blogs tech ou notifications non commerciales (YouTube, GitHub, réseaux sociaux).\n- URGENT : Alertes de sécurité et de connexion (nouvel appareil, nouvelle IP, code 2FA, changement de mot de passe/e-mail), problèmes bancaires/paiement refusé, ou mails personnels importants.\n\nRÈGLES :\n- Règle d'or : Si un mail parle de jeu vidéo MAIS propose une réduction, un solde ou un achat, classe-le dans \"PROMO\" et non dans \"JEUX\".\n- Si ton niveau de confiance est inférieur à 80, choisis obligatoirement \"URGENT\".\n\n<email>\nExpéditeur : {{ $('Email Trigger (IMAP)').item.json.from.text || $('Email Trigger (IMAP)').item.json.from }}\nSujet : {{ $('Email Trigger (IMAP)').item.json.subject }}\nCorps : {{ ($('Email Trigger (IMAP)').item.json.textPlain || ($('Email Trigger (IMAP)').item.json.textHtml || '').replace(/<style[\\s\\S]*?<\\/style>/gi, '').replace(/<[^>]+>/g, ' ')).replace(/https?:\\/\\/[^\\s]+/g, '[LIEN]').replace(/\\s+/g, ' ').trim().slice(0, 3000) }}\n</email>\n\nRéponds UNIQUEMENT avec un objet JSON valide respectant exactement cette structure :\n{\n  \"analyse_expediteur_et_intention\": \"Résumé en 1 phrase de qui envoie le mail et pourquoi\",\n  \"est_legitime\": true,\n  \"confiance\": 95,\n  \"categorie\": \"NOM_DE_LA_CATEGORIE\"\n}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        224,
+        0
+      ],
+      "id": "64737346-6c80-41ef-b990-0b60f88065b7",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5:3b",
+        "options": {
+          "temperature": 0,
+          "numCtx": 4096,
+          "format": "json"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmOllama",
+      "typeVersion": 1,
+      "position": [
+        160,
+        208
+      ],
+      "id": "bd3c82ca-c8dd-4a95-9434-8c7ae16727de",
+      "name": "Ollama Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "YOUR_OLLAMA_CREDENTIAL_ID",
+          "name": "Ollama Server (Debian)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.categorie_finale }}",
+                    "rightValue": "SPAM",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "6a9b03f6-8f51-419d-990f-d716b02fe333"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SPAM"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "8e1d5a61-ee7c-4a56-a1b4-272f44076408",
+                    "leftValue": "={{ $json.categorie_finale }}",
+                    "rightValue": "FACTURE",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "FACTURE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9edfcf74-7262-4521-a579-5024865b17a2",
+                    "leftValue": "={{ $json.categorie_finale }}",
+                    "rightValue": "JEUX",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "JEUX"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "fafb863f-7a48-4cda-bce5-b3c61f5f4ec3",
+                    "leftValue": "={{ $json.categorie_finale }}",
+                    "rightValue": "PROMO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PROMO"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "f0a61248-0387-41fe-bf7e-70036162de66",
+                    "leftValue": "={{ $json.categorie_finale }}",
+                    "rightValue": "NEWSLETTER",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "NEWSLETTER"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a72f9640-d979-4e20-9951-7360e9999a93",
+                    "leftValue": "={{ $json.categorie_finale }}",
+                    "rightValue": "URGENT",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "URGENT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        592,
+        0
+      ],
+      "id": "2b07dcb2-c012-486f-a6ba-c49f903b4ae9",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// @ts-ignore\nconst tls = require('tls');\n\nconst triggerData = $('Email Trigger (IMAP)').item.json;\nconst uid = triggerData.attributes?.uid || triggerData.id;\n\nconst host = process.env.IMAP_HOST || \"imap.gmail.com\";\nconst port = Number(process.env.IMAP_PORT || 993);\nconst user = process.env.IMAP_USER || \"thom1.lableigne@gmail.com\";\nconst pass = process.env.IMAP_PASSWORD || \"YOUR_IMAP_APP_PASSWORD\";\n\nfunction sendImapCommand(commands) {\n  return new Promise((resolve, reject) => {\n    let output = '';\n    let cmdIndex = 0;\n\n    const socket = tls.connect({\n      host: host,\n      port: port,\n      rejectUnauthorized: false\n    }, () => {});\n\n    socket.setEncoding('utf8');\n\n    socket.on('data', (data) => {\n      output += data;\n      if (cmdIndex < commands.length && (data.includes('* OK') || data.includes(`A${cmdIndex} OK`))) {\n        cmdIndex++;\n        if (cmdIndex <= commands.length) {\n          socket.write(`A${cmdIndex} ${commands[cmdIndex - 1]}\\r\\n`);\n        }\n      } else if (data.includes(`A${commands.length} OK`)) {\n        socket.end();\n        resolve(output);\n      } else if (data.includes('NO') || data.includes('BAD')) {\n        socket.end();\n        reject(new Error(`IMAP Error: ${data}`));\n      }\n    });\n\n    socket.on('error', (err) => reject(err));\n\n    socket.setTimeout(5000, () => {\n      socket.destroy();\n      reject(new Error('IMAP connection timed out'));\n    });\n  });\n}\n\n// Pour supprimer dans Gmail : on copie dans la Corbeille puis on retire de l'INBOX\nconst imapSteps = [\n  `LOGIN \"${user}\" \"${pass}\"`,\n  `SELECT \"INBOX\"`,\n  `UID COPY ${uid} \"[Gmail]/Corbeille\"`,\n  `UID STORE ${uid} +FLAGS (\\\\Deleted)`,\n  `EXPUNGE`,\n  `LOGOUT`\n];\n\nawait sendImapCommand(imapSteps);\n\nreturn { json: { status: 'deleted_to_trash', uid: uid } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -352
+      ],
+      "id": "7b675194-8d58-4dbc-9a98-57028f889533",
+      "name": "SPAM - Delete"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// @ts-ignore\nconst tls = require('tls');\n\nconst triggerData = $('Email Trigger (IMAP)').item.json;\nconst uid = triggerData.attributes?.uid || triggerData.id;\n\nconst host = process.env.IMAP_HOST || \"imap.gmail.com\";\nconst port = Number(process.env.IMAP_PORT || 993);\nconst user = process.env.IMAP_USER || \"thom1.lableigne@gmail.com\";\nconst pass = process.env.IMAP_PASSWORD || \"YOUR_IMAP_APP_PASSWORD\";\n\nfunction sendImapCommand(commands) {\n  return new Promise((resolve, reject) => {\n    let output = '';\n    let cmdIndex = 0;\n\n    const socket = tls.connect({\n      host: host,\n      port: port,\n      rejectUnauthorized: false\n    }, () => {});\n\n    socket.setEncoding('utf8');\n\n    socket.on('data', (data) => {\n      output += data;\n      if (cmdIndex < commands.length && (data.includes('* OK') || data.includes(`A${cmdIndex} OK`))) {\n        cmdIndex++;\n        if (cmdIndex <= commands.length) {\n          socket.write(`A${cmdIndex} ${commands[cmdIndex - 1]}\\r\\n`);\n        }\n      } else if (data.includes(`A${commands.length} OK`)) {\n        socket.end();\n        resolve(output);\n      } else if (data.includes('NO') || data.includes('BAD')) {\n        socket.end();\n        reject(new Error(`IMAP Error: ${data}`));\n      }\n    });\n\n    socket.on('error', (err) => reject(err));\n\n    socket.setTimeout(5000, () => {\n      socket.destroy();\n      reject(new Error('IMAP connection timed out'));\n    });\n  });\n}\n\nconst targetFolder = \"FACTURES\"; // Remplace par \"JEUX_PROMO\", \"NEWSLETTERS\", ou \"URGENT\"\n\nconst imapSteps = [\n  `LOGIN \"${user}\" \"${pass}\"`,\n  `SELECT \"INBOX\"`,\n  `UID COPY ${uid} \"${targetFolder}\"`,\n  `UID STORE ${uid} +FLAGS (\\\\Deleted)`,\n  `EXPUNGE`,\n  `LOGOUT`\n];\n\nawait sendImapCommand(imapSteps);\n\nreturn { json: { status: 'moved', uid: uid } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -224
+      ],
+      "id": "830943e5-3e1d-45e1-b651-07201cdf69db",
+      "name": "FACTURES - Move"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// @ts-ignore\nconst tls = require('tls');\n\nconst triggerData = $('Email Trigger (IMAP)').item.json;\nconst uid = triggerData.attributes?.uid || triggerData.id;\n\nconst host = process.env.IMAP_HOST || \"imap.gmail.com\";\nconst port = Number(process.env.IMAP_PORT || 993);\nconst user = process.env.IMAP_USER || \"thom1.lableigne@gmail.com\";\nconst pass = process.env.IMAP_PASSWORD || \"YOUR_IMAP_APP_PASSWORD\";\n\nfunction sendImapCommand(commands) {\n  return new Promise((resolve, reject) => {\n    let output = '';\n    let cmdIndex = 0;\n\n    const socket = tls.connect({\n      host: host,\n      port: port,\n      rejectUnauthorized: false\n    }, () => {});\n\n    socket.setEncoding('utf8');\n\n    socket.on('data', (data) => {\n      output += data;\n      if (cmdIndex < commands.length && (data.includes('* OK') || data.includes(`A${cmdIndex} OK`))) {\n        cmdIndex++;\n        if (cmdIndex <= commands.length) {\n          socket.write(`A${cmdIndex} ${commands[cmdIndex - 1]}\\r\\n`);\n        }\n      } else if (data.includes(`A${commands.length} OK`)) {\n        socket.end();\n        resolve(output);\n      } else if (data.includes('NO') || data.includes('BAD')) {\n        socket.end();\n        reject(new Error(`IMAP Error: ${data}`));\n      }\n    });\n\n    socket.on('error', (err) => reject(err));\n\n    socket.setTimeout(5000, () => {\n      socket.destroy();\n      reject(new Error('IMAP connection timed out'));\n    });\n  });\n}\n\nconst targetFolder = \"NEWSLETTERS\"; // Remplace par \"JEUX_PROMO\", \"\", ou \"URGENT\"\n\nconst imapSteps = [\n  `LOGIN \"${user}\" \"${pass}\"`,\n  `SELECT \"INBOX\"`,\n  `UID COPY ${uid} \"${targetFolder}\"`,\n  `UID STORE ${uid} +FLAGS (\\\\Deleted)`,\n  `EXPUNGE`,\n  `LOGOUT`\n];\n\nawait sendImapCommand(imapSteps);\n\nreturn { json: { status: 'moved', uid: uid } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        160
+      ],
+      "id": "1d6d99b3-79be-49b4-858a-bc49feec0538",
+      "name": "NEWSLETTERS - Move"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.XXX:11434/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"qwen3:14b\",\n  \"stream\": false,\n  \"think\": false,\n  \"format\": \"json\",\n  \"options\": {\n    \"num_ctx\": 4096,\n    \"temperature\": 0\n  },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es un analyste cybersécurité chargé d'évaluer les e-mails urgents ou alertes de connexion. L'utilisateur réside en France (région Nouvelle-Aquitaine : Bordeaux, Gradignan, Pessac, Bergerac, et FAI Bouygues Telecom). Analyse le mail et réponds UNIQUEMENT en JSON valide : {\\\"est_alerte_connexion\\\": true, \\\"localisation_detectee\\\": \\\"Ville/Pays ou inconnue\\\", \\\"connexion_legitime\\\": true, \\\"alerte_discord_requise\\\": false, \\\"resume_court\\\": \\\"Résumé en 1 phrase\\\"}. Règle : si c'est une alerte de connexion provenant de France (Bordeaux, Paris, Nouvelle-Aquitaine ou FAI français sans comportement anormal), mets \\\"connexion_legitime\\\": true et \\\"alerte_discord_requise\\\": false. Si la connexion vient d'un autre pays, d'une localisation suspecte, ou s'il s'agit d'un changement de mot de passe/e-mail non sollicité ou d'un problème critique, mets \\\"alerte_discord_requise\\\": true.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\"Expéditeur : \" + ($('Email Trigger (IMAP)').item.json.from.text || $('Email Trigger (IMAP)').item.json.from) + \"\\nSujet : \" + $('Email Trigger (IMAP)').item.json.subject + \"\\nCorps : \" + ($('Email Trigger (IMAP)').item.json.textPlain || ($('Email Trigger (IMAP)').item.json.textHtml || '').replace(/<style[\\s\\S]*?<\\/style>/gi, '').replace(/<[^>]+>/g, ' ')).replace(/\\s+/g, ' ').trim().slice(0, 12000)) }}\n    }\n  ]\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        976,
+        304
+      ],
+      "id": "c055f3c0-b971-4c87-87b7-136b3ffa1395",
+      "name": "HTTP Request",
+      "retryOnFail": true,
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo /opt/n8n-stack/arch-power.sh shutdown"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1616,
+        320
+      ],
+      "id": "62fb622d-ae21-4d4e-af7b-722f0ff050cd",
+      "name": "Shutdown (WoL)",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "YOUR_SSH_CREDENTIAL_ID",
+          "name": "SSH Debian Host (WoL)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo /opt/n8n-stack/arch-power.sh wake"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        816,
+        304
+      ],
+      "id": "87b77ad2-526c-4b80-abce-430199427532",
+      "name": "Wake Up (WoL)",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "YOUR_SSH_CREDENTIAL_ID",
+          "name": "SSH Debian Host (WoL)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map((item) => {\n  let raw = item.json.text || item.json.output || JSON.stringify(item.json);\n  raw = String(raw).replace(/```json/gi, '').replace(/```/g, '').trim();\n\n  let parsed;\n  try {\n    parsed = JSON.parse(raw);\n  } catch (e) {\n    return {\n      json: {\n        categorie_finale: 'URGENT',\n        confiance: 0,\n        raison_escalade: 'JSON invalide du modèle léger',\n        raw_output: raw\n      }\n    };\n  }\n\n  let categorie = (parsed.categorie || 'URGENT').toUpperCase().trim();\n  const confiance = Number(parsed.confiance || 0);\n\n  // Garde-fou : en cas de doute (< 80) ou SPAM peu sûr (< 92), on bascule sur URGENT (donc qwen3:14b)\n  if (confiance < 80 || (categorie === 'SPAM' && confiance < 92) || categorie === 'AUTRE') {\n    categorie = 'URGENT';\n  }\n\n  return {\n    json: {\n      ...parsed,\n      categorie_finale: categorie\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        272
+      ],
+      "id": "47d071d3-cc6d-4ea0-b2c6-a1ddade0174b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// @ts-ignore\nconst tls = require('tls');\n\nconst triggerData = $('Email Trigger (IMAP)').item.json;\nconst uid = triggerData.attributes?.uid || triggerData.id;\n\nconst host = process.env.IMAP_HOST || \"imap.gmail.com\";\nconst port = Number(process.env.IMAP_PORT || 993);\nconst user = process.env.IMAP_USER || \"thom1.lableigne@gmail.com\";\nconst pass = process.env.IMAP_PASSWORD || \"YOUR_IMAP_APP_PASSWORD\";\n\nfunction sendImapCommand(commands) {\n  return new Promise((resolve, reject) => {\n    let output = '';\n    let cmdIndex = 0;\n\n    const socket = tls.connect({\n      host: host,\n      port: port,\n      rejectUnauthorized: false\n    }, () => {});\n\n    socket.setEncoding('utf8');\n\n    socket.on('data', (data) => {\n      output += data;\n      if (cmdIndex < commands.length && (data.includes('* OK') || data.includes(`A${cmdIndex} OK`))) {\n        cmdIndex++;\n        if (cmdIndex <= commands.length) {\n          socket.write(`A${cmdIndex} ${commands[cmdIndex - 1]}\\r\\n`);\n        }\n      } else if (data.includes(`A${commands.length} OK`)) {\n        socket.end();\n        resolve(output);\n      } else if (data.includes('NO') || data.includes('BAD')) {\n        socket.end();\n        reject(new Error(`IMAP Error: ${data}`));\n      }\n    });\n\n    socket.on('error', (err) => reject(err));\n\n    socket.setTimeout(5000, () => {\n      socket.destroy();\n      reject(new Error('IMAP connection timed out'));\n    });\n  });\n}\n\nconst targetFolder = \"PROMO\"; // Remplace par \"JEUX\", \"NEWSLETTERS\", ou \"URGENT\"\n\nconst imapSteps = [\n  `LOGIN \"${user}\" \"${pass}\"`,\n  `SELECT \"INBOX\"`,\n  `UID COPY ${uid} \"${targetFolder}\"`,\n  `UID STORE ${uid} +FLAGS (\\\\Deleted)`,\n  `EXPUNGE`,\n  `LOGOUT`\n];\n\nawait sendImapCommand(imapSteps);\n\nreturn { json: { status: 'moved', uid: uid } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        32
+      ],
+      "id": "93f86e31-ed3e-447c-979b-dd89d69839fe",
+      "name": "PROMO - Move"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// @ts-ignore\nconst tls = require('tls');\n\nconst triggerData = $('Email Trigger (IMAP)').item.json;\nconst uid = triggerData.attributes?.uid || triggerData.id;\n\nconst host = process.env.IMAP_HOST || \"imap.gmail.com\";\nconst port = Number(process.env.IMAP_PORT || 993);\nconst user = process.env.IMAP_USER || \"thom1.lableigne@gmail.com\";\nconst pass = process.env.IMAP_PASSWORD || \"YOUR_IMAP_APP_PASSWORD\";\n\nfunction sendImapCommand(commands) {\n  return new Promise((resolve, reject) => {\n    let output = '';\n    let cmdIndex = 0;\n\n    const socket = tls.connect({\n      host: host,\n      port: port,\n      rejectUnauthorized: false\n    }, () => {});\n\n    socket.setEncoding('utf8');\n\n    socket.on('data', (data) => {\n      output += data;\n      if (cmdIndex < commands.length && (data.includes('* OK') || data.includes(`A${cmdIndex} OK`))) {\n        cmdIndex++;\n        if (cmdIndex <= commands.length) {\n          socket.write(`A${cmdIndex} ${commands[cmdIndex - 1]}\\r\\n`);\n        }\n      } else if (data.includes(`A${commands.length} OK`)) {\n        socket.end();\n        resolve(output);\n      } else if (data.includes('NO') || data.includes('BAD')) {\n        socket.end();\n        reject(new Error(`IMAP Error: ${data}`));\n      }\n    });\n\n    socket.on('error', (err) => reject(err));\n\n    socket.setTimeout(5000, () => {\n      socket.destroy();\n      reject(new Error('IMAP connection timed out'));\n    });\n  });\n}\n\nconst targetFolder = \"JEUX\"; // Remplace par \"JEUX\", \"NEWSLETTERS\", ou \"URGENT\"\n\nconst imapSteps = [\n  `LOGIN \"${user}\" \"${pass}\"`,\n  `SELECT \"INBOX\"`,\n  `UID COPY ${uid} \"${targetFolder}\"`,\n  `UID STORE ${uid} +FLAGS (\\\\Deleted)`,\n  `EXPUNGE`,\n  `LOGOUT`\n];\n\nawait sendImapCommand(imapSteps);\n\nreturn { json: { status: 'moved', uid: uid } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        -96
+      ],
+      "id": "2e91fdd4-cef0-4885-8539-a8e1413698c6",
+      "name": "JEUX - Move"
+    },
+    {
+      "parameters": {
+        "authentication": "webhook",
+        "content": "=",
+        "options": {},
+        "embeds": {
+          "values": [
+            {
+              "inputMethod": "json",
+              "json": "={\n  \"title\": \"🚨 Alerte Mail / Sécurité détectée\",\n  \"description\": {{ JSON.stringify(JSON.parse($json.message.content).resume_court || 'Alerte nécessitant vérification') }},\n  \"color\": 15158332,\n  \"timestamp\": {{ JSON.stringify($now.toISO()) }},\n  \"fields\": [\n    {\n      \"name\": \"Expéditeur\",\n      \"value\": {{ JSON.stringify($('Email Trigger (IMAP)').item.json.from.text || $('Email Trigger (IMAP)').item.json.from || 'Inconnu') }},\n      \"inline\": true\n    },\n    {\n      \"name\": \"Localisation\",\n      \"value\": {{ JSON.stringify(JSON.parse($json.message.content).localisation_detectee || 'Inconnue') }},\n      \"inline\": true\n    },\n    {\n      \"name\": \"Sujet\",\n      \"value\": {{ JSON.stringify($('Email Trigger (IMAP)').item.json.subject || 'Sans sujet') }},\n      \"inline\": false\n    }\n  ]\n}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1376,
+        224
+      ],
+      "id": "33304d0a-6004-487a-bca9-2623e920e223",
+      "name": "Discord",
+      "webhookId": "YOUR_DISCORD_WEBHOOK_ID",
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "YOUR_DISCORD_WEBHOOK_CREDENTIAL_ID",
+          "name": "Discord Security Alerts Webhook"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c79bfbf3-98d4-400c-ada5-27ab44f49545",
+              "leftValue": "={{ (() => { try { return JSON.parse($json.message?.content || '{}').alerte_discord_requise === true; } catch { return false; } })() }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        304
+      ],
+      "id": "a69a96f2-a32f-42fd-b169-53dbecaa5366",
+      "name": "If"
+    }
+  ],
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "SPAM - Delete",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FACTURES - Move",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "JEUX - Move",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PROMO - Move",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NEWSLETTERS - Move",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wake Up (WoL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SPAM - Delete": {
+      "main": [
+        []
+      ]
+    },
+    "FACTURES - Move": {
+      "main": [
+        []
+      ]
+    },
+    "NEWSLETTERS - Move": {
+      "main": [
+        []
+      ]
+    },
+    "Wake Up (WoL)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JEUX - Move": {
+      "main": [
+        []
+      ]
+    },
+    "Shutdown (WoL)": {
+      "main": [
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Discord",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shutdown (WoL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discord": {
+      "main": [
+        [
+          {
+            "node": "Shutdown (WoL)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "tags": []
+}
